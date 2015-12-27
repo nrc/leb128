@@ -42,6 +42,14 @@ impl ILeb128 {
         ILeb128Ref::from_bytes(bytes).to_owned()
     }
 
+    pub fn all_from_bytes(bytes: &[u8]) -> Vec<ILeb128> {
+        ILeb128Ref::all_from_bytes(bytes).into_iter().map(|i| i.to_owned()).collect()
+    }
+
+    pub fn byte_count(self) -> usize {
+        self.0.len()
+    }
+
     pub fn as_ref(&self) -> ILeb128Ref {
         ILeb128Ref(&self.0)
     }
@@ -57,6 +65,14 @@ impl ILeb128 {
 impl ULeb128 {
     pub fn from_bytes(bytes: &[u8]) -> ULeb128 {
         ULeb128Ref::from_bytes(bytes).to_owned()
+    }
+
+    pub fn all_from_bytes(bytes: &[u8]) -> Vec<ULeb128> {
+        ULeb128Ref::all_from_bytes(bytes).into_iter().map(|i| i.to_owned()).collect()
+    }
+
+    pub fn byte_count(self) -> usize {
+        self.0.len()
     }
 
     pub fn as_ref(&self) -> ULeb128Ref {
@@ -107,14 +123,51 @@ macro_rules! decode_signed {
     }
 }
 
-impl<'a> ILeb128Ref<'a> {
-    pub fn from_bytes(bytes: &'a [u8]) -> ILeb128Ref<'a> {
-        ILeb128Ref(bytes)
-    }
+macro_rules! leb_ref_impl {
+    ($t: ident, $owned_t: ident) => {
+        /// Read a single valid LEB128 number from bytes.
+        /// Panics if there is not a valid LEB128 number in bytes.
+        pub fn from_bytes(bytes: &'a [u8]) -> $t<'a> {
+            let mut count = 0;
+            for byte in bytes {
+                count += 1;
+                if byte & 0b1000_0000 == 0 {
+                    return $t(&bytes[0..count]);
+                }
+            }
+            panic!("from_bytes on invalid input");
+        }
 
-    pub fn to_owned(self) -> ILeb128 {
-        ILeb128(self.0.to_owned())
+        /// Read all of bytes into a Vec of LEB128 numbers. Panics if there
+        /// are trailing bytes which are not part of a valid LEB128 number.
+        pub fn all_from_bytes(bytes: &'a [u8]) -> Vec<$t<'a>> {
+            let mut result = vec![];
+            let mut start = 0;
+            let mut end = 0;
+            for byte in bytes {
+                end += 1;
+                if byte & 0b1000_0000 == 0 {
+                    result.push($t(&bytes[start..end]));
+                    start = end;
+                }
+            }
+            assert!(start == end, "all_from_bytes on invalid input");
+            
+            result
+        }
+
+        pub fn byte_count(self) -> usize {
+            self.0.len()
+        }
+
+        pub fn to_owned(self) -> $owned_t {
+            $owned_t(self.0.to_owned())
+        }
     }
+}
+
+impl<'a> ILeb128Ref<'a> {
+    leb_ref_impl!(ILeb128Ref, ILeb128);
 
     decode_signed!(expect_i8, i8);
     decode_signed!(expect_i16, i16);
@@ -157,13 +210,7 @@ macro_rules! decode_unsigned {
 }
 
 impl<'a> ULeb128Ref<'a> {
-    pub fn from_bytes(bytes: &'a [u8]) -> ULeb128Ref<'a> {
-        ULeb128Ref(bytes)
-    }
-
-    pub fn to_owned(self) -> ULeb128 {
-        ULeb128(self.0.to_owned())
-    }
+    leb_ref_impl!(ULeb128Ref, ULeb128);
 
     decode_unsigned!(expect_u8, u8);
     decode_unsigned!(expect_u16, u16);
@@ -453,4 +500,18 @@ mod test {
     fn test_decode_overflow_i64() {
         ILeb128::from_bytes(&[128, 128, 128, 128, 128, 128, 128, 128, 128, 2]).expect_i64();
     }
+
+    #[test]
+    fn test_byte_count() {
+        assert!(ILeb128::from_bytes(&[2]).byte_count() == 1);
+        assert!(ILeb128::from_bytes(&[128, 128, 128, 2]).byte_count() == 4);
+        assert!(ILeb128::from_bytes(&[128, 128, 128, 128, 128, 128, 128, 128, 128, 2]).byte_count() == 10);
+
+        assert!(ULeb128::from_bytes(&[2]).byte_count() == 1);
+        assert!(ULeb128::from_bytes(&[128, 128, 128, 2]).byte_count() == 4);
+        assert!(ULeb128::from_bytes(&[128, 128, 128, 128, 128, 128, 128, 128, 128, 2]).byte_count() == 10);
+    }
+
+    // TODO test invalid from_bytes
+    // TODO test all_from_bytes (including invalid bytes)
 }
