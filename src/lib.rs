@@ -13,19 +13,19 @@ use std::mem;
 
 /// Signed LEB128 integer.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct ILeb128(Vec<u8>);
+pub struct ILeb128Owned(Vec<u8>);
 
 /// Unsigned LEB128 integer.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct ULeb128(Vec<u8>);
+pub struct ULeb128Owned(Vec<u8>);
 
 /// Signed LEB128 integer, backed by a reference.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct ILeb128Ref<'a>(&'a [u8]);
+pub struct ILeb128<'a>(&'a [u8]);
 
 /// Unsigned LEB128 integer, backed by a reference.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct ULeb128Ref<'a>(&'a [u8]);
+pub struct ULeb128<'a>(&'a [u8]);
 
 // TODO PartialEq to compare Ref with non-Ref versions
 
@@ -37,21 +37,21 @@ macro_rules! dispatch {
     }
 }
 
-impl ILeb128 {
-    pub fn from_bytes(bytes: &[u8]) -> ILeb128 {
-        ILeb128Ref::from_bytes(bytes).to_owned()
+impl ILeb128Owned {
+    pub fn from_bytes(bytes: &[u8]) -> ILeb128Owned {
+        ILeb128::from_bytes(bytes).to_owned()
     }
 
-    pub fn all_from_bytes(bytes: &[u8]) -> Vec<ILeb128> {
-        ILeb128Ref::all_from_bytes(bytes).into_iter().map(|i| i.to_owned()).collect()
+    pub fn all_from_bytes(bytes: &[u8]) -> Vec<ILeb128Owned> {
+        ILeb128::all_from_bytes(bytes).into_iter().map(|i| i.to_owned()).collect()
     }
 
     pub fn byte_count(self) -> usize {
         self.0.len()
     }
 
-    pub fn as_ref(&self) -> ILeb128Ref {
-        ILeb128Ref(&self.0)
+    pub fn as_ref(&self) -> ILeb128 {
+        ILeb128(&self.0)
     }
 
     dispatch!(expect_i8, i8);
@@ -62,21 +62,21 @@ impl ILeb128 {
     dispatch!(decode_bytes, Vec<u8>);
 }
 
-impl ULeb128 {
-    pub fn from_bytes(bytes: &[u8]) -> ULeb128 {
-        ULeb128Ref::from_bytes(bytes).to_owned()
+impl ULeb128Owned {
+    pub fn from_bytes(bytes: &[u8]) -> ULeb128Owned {
+        ULeb128::from_bytes(bytes).to_owned()
     }
 
-    pub fn all_from_bytes(bytes: &[u8]) -> Vec<ULeb128> {
-        ULeb128Ref::all_from_bytes(bytes).into_iter().map(|i| i.to_owned()).collect()
+    pub fn all_from_bytes(bytes: &[u8]) -> Vec<ULeb128Owned> {
+        ULeb128::all_from_bytes(bytes).into_iter().map(|i| i.to_owned()).collect()
     }
 
     pub fn byte_count(self) -> usize {
         self.0.len()
     }
 
-    pub fn as_ref(&self) -> ULeb128Ref {
-        ULeb128Ref(&self.0)
+    pub fn as_ref(&self) -> ULeb128 {
+        ULeb128(&self.0)
     }
 
     dispatch!(expect_u8, u8);
@@ -166,8 +166,8 @@ macro_rules! leb_ref_impl {
     }
 }
 
-impl<'a> ILeb128Ref<'a> {
-    leb_ref_impl!(ILeb128Ref, ILeb128);
+impl<'a> ILeb128<'a> {
+    leb_ref_impl!(ILeb128, ILeb128Owned);
 
     decode_signed!(expect_i8, i8);
     decode_signed!(expect_i16, i16);
@@ -209,8 +209,8 @@ macro_rules! decode_unsigned {
     }
 }
 
-impl<'a> ULeb128Ref<'a> {
-    leb_ref_impl!(ULeb128Ref, ULeb128);
+impl<'a> ULeb128<'a> {
+    leb_ref_impl!(ULeb128, ULeb128Owned);
 
     decode_unsigned!(expect_u8, u8);
     decode_unsigned!(expect_u16, u16);
@@ -230,18 +230,18 @@ impl<'a> ULeb128Ref<'a> {
 }
 
 
-pub trait ToILeb128: Sized {
-    fn encode(self) -> ILeb128;
+pub trait ToILeb128Owned: Sized {
+    fn encode(self) -> ILeb128Owned;
 }
 
-pub trait ToULeb128: Sized {
-    fn encode(self) -> ULeb128;
+pub trait ToULeb128Owned: Sized {
+    fn encode(self) -> ULeb128Owned;
 }
 
 macro_rules! impl_encode_signed {
     ($t: ident) => {
-        impl ToILeb128 for $t {
-            fn encode(mut self) -> ILeb128 {
+        impl ToILeb128Owned for $t {
+            fn encode(mut self) -> ILeb128Owned {
                 const SIGN_BIT: u8 = 0b0100_0000;
                 let mut result = vec![];
                 let mut more = true;
@@ -257,7 +257,7 @@ macro_rules! impl_encode_signed {
                     result.push(byte);
 
                     if !more {
-                        return ILeb128(result);
+                        return ILeb128Owned(result);
                     }
                 }
             }
@@ -267,8 +267,8 @@ macro_rules! impl_encode_signed {
 
 macro_rules! impl_encode_unsigned {
     ($t: ident) => {
-        impl ToULeb128 for $t {
-            fn encode(mut self) -> ULeb128 {
+        impl ToULeb128Owned for $t {
+            fn encode(mut self) -> ULeb128Owned {
                 let mut result = vec![];
                 loop {
                     let mut byte = self as u8 & 0b0111_1111;
@@ -279,7 +279,7 @@ macro_rules! impl_encode_unsigned {
                     result.push(byte);
 
                     if self == 0 {
-                        return ULeb128(result);
+                        return ULeb128Owned(result);
                     }
                 }
             }
@@ -296,14 +296,14 @@ impl_encode_unsigned!(u16);
 impl_encode_unsigned!(u32);
 impl_encode_unsigned!(u64);
 
-impl<'a> ToILeb128 for &'a [u8] {
-    fn encode(self) -> ILeb128 {
+impl<'a> ToILeb128Owned for &'a [u8] {
+    fn encode(self) -> ILeb128Owned {
         unimplemented!();
     }
 }
 
-impl<'a> ToULeb128 for &'a [u8] {
-    fn encode(self) -> ULeb128 {
+impl<'a> ToULeb128Owned for &'a [u8] {
+    fn encode(self) -> ULeb128Owned {
         unimplemented!();
     }
 }
@@ -314,202 +314,202 @@ mod test {
 
     #[test]
     fn test_unsigned_encode() {
-        assert!((0u8).encode() == ULeb128::from_bytes(&[0]));
-        assert!((42u8).encode() == ULeb128::from_bytes(&[42]));
-        assert!((127u8).encode() == ULeb128::from_bytes(&[127]));
-        assert!((128u8).encode() == ULeb128::from_bytes(&[128, 1]));
-        assert!((255u8).encode() == ULeb128::from_bytes(&[255, 1]));
+        assert!((0u8).encode() == ULeb128Owned::from_bytes(&[0]));
+        assert!((42u8).encode() == ULeb128Owned::from_bytes(&[42]));
+        assert!((127u8).encode() == ULeb128Owned::from_bytes(&[127]));
+        assert!((128u8).encode() == ULeb128Owned::from_bytes(&[128, 1]));
+        assert!((255u8).encode() == ULeb128Owned::from_bytes(&[255, 1]));
 
-        assert!((0u16).encode() == ULeb128::from_bytes(&[0]));
-        assert!((42u16).encode() == ULeb128::from_bytes(&[42]));
-        assert!((127u16).encode() == ULeb128::from_bytes(&[127]));
-        assert!((128u16).encode() == ULeb128::from_bytes(&[128, 1]));
-        assert!((0xffffu16).encode() == ULeb128::from_bytes(&[255, 255, 0b11]));
+        assert!((0u16).encode() == ULeb128Owned::from_bytes(&[0]));
+        assert!((42u16).encode() == ULeb128Owned::from_bytes(&[42]));
+        assert!((127u16).encode() == ULeb128Owned::from_bytes(&[127]));
+        assert!((128u16).encode() == ULeb128Owned::from_bytes(&[128, 1]));
+        assert!((0xffffu16).encode() == ULeb128Owned::from_bytes(&[255, 255, 0b11]));
 
-        assert!((0u32).encode() == ULeb128::from_bytes(&[0]));
-        assert!((42u32).encode() == ULeb128::from_bytes(&[42]));
-        assert!((127u32).encode() == ULeb128::from_bytes(&[127]));
-        assert!((128u32).encode() == ULeb128::from_bytes(&[128, 1]));
-        assert!((624485u32).encode() == ULeb128::from_bytes(&[0xE5, 0x8E, 0x26]));
+        assert!((0u32).encode() == ULeb128Owned::from_bytes(&[0]));
+        assert!((42u32).encode() == ULeb128Owned::from_bytes(&[42]));
+        assert!((127u32).encode() == ULeb128Owned::from_bytes(&[127]));
+        assert!((128u32).encode() == ULeb128Owned::from_bytes(&[128, 1]));
+        assert!((624485u32).encode() == ULeb128Owned::from_bytes(&[0xE5, 0x8E, 0x26]));
 
-        assert!((0u64).encode() == ULeb128::from_bytes(&[0]));
-        assert!((42u64).encode() == ULeb128::from_bytes(&[42]));
-        assert!((127u64).encode() == ULeb128::from_bytes(&[127]));
-        assert!((128u64).encode() == ULeb128::from_bytes(&[128, 1]));
-        assert!((624485u64).encode() == ULeb128::from_bytes(&[0xE5, 0x8E, 0x26]));
+        assert!((0u64).encode() == ULeb128Owned::from_bytes(&[0]));
+        assert!((42u64).encode() == ULeb128Owned::from_bytes(&[42]));
+        assert!((127u64).encode() == ULeb128Owned::from_bytes(&[127]));
+        assert!((128u64).encode() == ULeb128Owned::from_bytes(&[128, 1]));
+        assert!((624485u64).encode() == ULeb128Owned::from_bytes(&[0xE5, 0x8E, 0x26]));
     }
 
     #[test]
     fn test_signed_encode() {
-        assert!((   0i8).encode() == ILeb128::from_bytes(&[0]));
-        assert!((   2i8).encode() == ILeb128::from_bytes(&[2]));
-        assert!((  -2i8).encode() == ILeb128::from_bytes(&[0x7e]));
-        assert!(( 127i8).encode() == ILeb128::from_bytes(&[0xff, 0]));
-        assert!((-127i8).encode() == ILeb128::from_bytes(&[0x81, 0x7f]));
-        assert!((-128i8).encode() == ILeb128::from_bytes(&[0x80, 0x7f]));
+        assert!((   0i8).encode() == ILeb128Owned::from_bytes(&[0]));
+        assert!((   2i8).encode() == ILeb128Owned::from_bytes(&[2]));
+        assert!((  -2i8).encode() == ILeb128Owned::from_bytes(&[0x7e]));
+        assert!(( 127i8).encode() == ILeb128Owned::from_bytes(&[0xff, 0]));
+        assert!((-127i8).encode() == ILeb128Owned::from_bytes(&[0x81, 0x7f]));
+        assert!((-128i8).encode() == ILeb128Owned::from_bytes(&[0x80, 0x7f]));
 
-        assert!((   0i16).encode() == ILeb128::from_bytes(&[0]));
-        assert!((   2i16).encode() == ILeb128::from_bytes(&[2]));
-        assert!((  -2i16).encode() == ILeb128::from_bytes(&[0x7e]));
-        assert!(( 127i16).encode() == ILeb128::from_bytes(&[0xff, 0]));
-        assert!((-127i16).encode() == ILeb128::from_bytes(&[0x81, 0x7f]));
-        assert!(( 128i16).encode() == ILeb128::from_bytes(&[0x80, 1]));
-        assert!((-128i16).encode() == ILeb128::from_bytes(&[0x80, 0x7f]));
-        assert!(( 129i16).encode() == ILeb128::from_bytes(&[0x81, 1]));
-        assert!((-129i16).encode() == ILeb128::from_bytes(&[0xff, 0x7e]));
+        assert!((   0i16).encode() == ILeb128Owned::from_bytes(&[0]));
+        assert!((   2i16).encode() == ILeb128Owned::from_bytes(&[2]));
+        assert!((  -2i16).encode() == ILeb128Owned::from_bytes(&[0x7e]));
+        assert!(( 127i16).encode() == ILeb128Owned::from_bytes(&[0xff, 0]));
+        assert!((-127i16).encode() == ILeb128Owned::from_bytes(&[0x81, 0x7f]));
+        assert!(( 128i16).encode() == ILeb128Owned::from_bytes(&[0x80, 1]));
+        assert!((-128i16).encode() == ILeb128Owned::from_bytes(&[0x80, 0x7f]));
+        assert!(( 129i16).encode() == ILeb128Owned::from_bytes(&[0x81, 1]));
+        assert!((-129i16).encode() == ILeb128Owned::from_bytes(&[0xff, 0x7e]));
 
-        assert!((   0i32).encode() == ILeb128::from_bytes(&[0]));
-        assert!((   2i32).encode() == ILeb128::from_bytes(&[2]));
-        assert!((  -2i32).encode() == ILeb128::from_bytes(&[0x7e]));
-        assert!(( 127i32).encode() == ILeb128::from_bytes(&[0xff, 0]));
-        assert!((-127i32).encode() == ILeb128::from_bytes(&[0x81, 0x7f]));
-        assert!(( 128i32).encode() == ILeb128::from_bytes(&[0x80, 1]));
-        assert!((-128i32).encode() == ILeb128::from_bytes(&[0x80, 0x7f]));
-        assert!(( 129i32).encode() == ILeb128::from_bytes(&[0x81, 1]));
-        assert!((-129i32).encode() == ILeb128::from_bytes(&[0xff, 0x7e]));
+        assert!((   0i32).encode() == ILeb128Owned::from_bytes(&[0]));
+        assert!((   2i32).encode() == ILeb128Owned::from_bytes(&[2]));
+        assert!((  -2i32).encode() == ILeb128Owned::from_bytes(&[0x7e]));
+        assert!(( 127i32).encode() == ILeb128Owned::from_bytes(&[0xff, 0]));
+        assert!((-127i32).encode() == ILeb128Owned::from_bytes(&[0x81, 0x7f]));
+        assert!(( 128i32).encode() == ILeb128Owned::from_bytes(&[0x80, 1]));
+        assert!((-128i32).encode() == ILeb128Owned::from_bytes(&[0x80, 0x7f]));
+        assert!(( 129i32).encode() == ILeb128Owned::from_bytes(&[0x81, 1]));
+        assert!((-129i32).encode() == ILeb128Owned::from_bytes(&[0xff, 0x7e]));
 
-        assert!((   0i64).encode() == ILeb128::from_bytes(&[0]));
-        assert!((   2i64).encode() == ILeb128::from_bytes(&[2]));
-        assert!((  -2i64).encode() == ILeb128::from_bytes(&[0x7e]));
-        assert!(( 127i64).encode() == ILeb128::from_bytes(&[0xff, 0]));
-        assert!((-127i64).encode() == ILeb128::from_bytes(&[0x81, 0x7f]));
-        assert!(( 128i64).encode() == ILeb128::from_bytes(&[0x80, 1]));
-        assert!((-128i64).encode() == ILeb128::from_bytes(&[0x80, 0x7f]));
-        assert!(( 129i64).encode() == ILeb128::from_bytes(&[0x81, 1]));
-        assert!((-129i64).encode() == ILeb128::from_bytes(&[0xff, 0x7e]));
+        assert!((   0i64).encode() == ILeb128Owned::from_bytes(&[0]));
+        assert!((   2i64).encode() == ILeb128Owned::from_bytes(&[2]));
+        assert!((  -2i64).encode() == ILeb128Owned::from_bytes(&[0x7e]));
+        assert!(( 127i64).encode() == ILeb128Owned::from_bytes(&[0xff, 0]));
+        assert!((-127i64).encode() == ILeb128Owned::from_bytes(&[0x81, 0x7f]));
+        assert!(( 128i64).encode() == ILeb128Owned::from_bytes(&[0x80, 1]));
+        assert!((-128i64).encode() == ILeb128Owned::from_bytes(&[0x80, 0x7f]));
+        assert!(( 129i64).encode() == ILeb128Owned::from_bytes(&[0x81, 1]));
+        assert!((-129i64).encode() == ILeb128Owned::from_bytes(&[0xff, 0x7e]));
     }
 
     #[test]
     fn test_unsigned_decode() {
-        assert!(ULeb128::from_bytes(&[0]).expect_u8() == 0);
-        assert!(ULeb128::from_bytes(&[42]).expect_u8() == 42);
-        assert!(ULeb128::from_bytes(&[127]).expect_u8() == 127);
-        assert!(ULeb128::from_bytes(&[128, 1]).expect_u8() == 128);
-        assert!(ULeb128::from_bytes(&[255, 1]).expect_u8() == 255);
+        assert!(ULeb128Owned::from_bytes(&[0]).expect_u8() == 0);
+        assert!(ULeb128Owned::from_bytes(&[42]).expect_u8() == 42);
+        assert!(ULeb128Owned::from_bytes(&[127]).expect_u8() == 127);
+        assert!(ULeb128Owned::from_bytes(&[128, 1]).expect_u8() == 128);
+        assert!(ULeb128Owned::from_bytes(&[255, 1]).expect_u8() == 255);
 
-        assert!(ULeb128::from_bytes(&[0]).expect_u16() == 0);
-        assert!(ULeb128::from_bytes(&[42]).expect_u16() == 42);
-        assert!(ULeb128::from_bytes(&[127]).expect_u16() == 127);
-        assert!(ULeb128::from_bytes(&[128, 1]).expect_u16() == 128);
-        assert!(ULeb128::from_bytes(&[255, 255, 3]).expect_u16() == 0xffff);
+        assert!(ULeb128Owned::from_bytes(&[0]).expect_u16() == 0);
+        assert!(ULeb128Owned::from_bytes(&[42]).expect_u16() == 42);
+        assert!(ULeb128Owned::from_bytes(&[127]).expect_u16() == 127);
+        assert!(ULeb128Owned::from_bytes(&[128, 1]).expect_u16() == 128);
+        assert!(ULeb128Owned::from_bytes(&[255, 255, 3]).expect_u16() == 0xffff);
 
-        assert!(ULeb128::from_bytes(&[0]).expect_u32() == 0);
-        assert!(ULeb128::from_bytes(&[42]).expect_u32() == 42);
-        assert!(ULeb128::from_bytes(&[127]).expect_u32() == 127);
-        assert!(ULeb128::from_bytes(&[128, 1]).expect_u32() == 128);
-        assert!(ULeb128::from_bytes(&[0xE5, 0x8E, 0x26]).expect_u32() == 624485);
-        assert!(ULeb128::from_bytes(&[255, 255, 255, 255, 0b1111]).expect_u32() == 0xffff_ffff);
+        assert!(ULeb128Owned::from_bytes(&[0]).expect_u32() == 0);
+        assert!(ULeb128Owned::from_bytes(&[42]).expect_u32() == 42);
+        assert!(ULeb128Owned::from_bytes(&[127]).expect_u32() == 127);
+        assert!(ULeb128Owned::from_bytes(&[128, 1]).expect_u32() == 128);
+        assert!(ULeb128Owned::from_bytes(&[0xE5, 0x8E, 0x26]).expect_u32() == 624485);
+        assert!(ULeb128Owned::from_bytes(&[255, 255, 255, 255, 0b1111]).expect_u32() == 0xffff_ffff);
 
-        assert!(ULeb128::from_bytes(&[0]).expect_u64() == 0);
-        assert!(ULeb128::from_bytes(&[42]).expect_u64() == 42);
-        assert!(ULeb128::from_bytes(&[127]).expect_u64() == 127);
-        assert!(ULeb128::from_bytes(&[128, 1]).expect_u64() == 128);
-        assert!(ULeb128::from_bytes(&[0xE5, 0x8E, 0x26]).expect_u64() == 624485);
-        assert!(ULeb128::from_bytes(&[255, 255, 255, 255, 255, 255, 255, 255, 255, 1]).expect_u64() == 0xffff_ffff_ffff_ffff);
+        assert!(ULeb128Owned::from_bytes(&[0]).expect_u64() == 0);
+        assert!(ULeb128Owned::from_bytes(&[42]).expect_u64() == 42);
+        assert!(ULeb128Owned::from_bytes(&[127]).expect_u64() == 127);
+        assert!(ULeb128Owned::from_bytes(&[128, 1]).expect_u64() == 128);
+        assert!(ULeb128Owned::from_bytes(&[0xE5, 0x8E, 0x26]).expect_u64() == 624485);
+        assert!(ULeb128Owned::from_bytes(&[255, 255, 255, 255, 255, 255, 255, 255, 255, 1]).expect_u64() == 0xffff_ffff_ffff_ffff);
     }
 
     #[test]
     fn test_signed_decode() {
         println!("5");
-        assert!(ILeb128::from_bytes(&[0]).expect_i8() == 0);
+        assert!(ILeb128Owned::from_bytes(&[0]).expect_i8() == 0);
         println!("6");
-        assert!(ILeb128::from_bytes(&[0]).expect_i8() == 0);
+        assert!(ILeb128Owned::from_bytes(&[0]).expect_i8() == 0);
         println!("7");
-        assert!(ILeb128::from_bytes(&[2]).expect_i8() == 2);
+        assert!(ILeb128Owned::from_bytes(&[2]).expect_i8() == 2);
         println!("8");
-        assert!(ILeb128::from_bytes(&[0x7e]).expect_i8() == -2);
+        assert!(ILeb128Owned::from_bytes(&[0x7e]).expect_i8() == -2);
         println!("9");
-        assert!(ILeb128::from_bytes(&[0xff, 0]).expect_i8() == 127);
+        assert!(ILeb128Owned::from_bytes(&[0xff, 0]).expect_i8() == 127);
         println!("2");
-        assert!(ILeb128::from_bytes(&[0x81, 0x7f]).expect_i8() == -127);
+        assert!(ILeb128Owned::from_bytes(&[0x81, 0x7f]).expect_i8() == -127);
         println!("3");
-        assert!(ILeb128::from_bytes(&[0x80, 0x7f]).expect_i8() == -128);
+        assert!(ILeb128Owned::from_bytes(&[0x80, 0x7f]).expect_i8() == -128);
         println!("4");
 
-        assert!(ILeb128::from_bytes(&[0]).expect_i16() == 0);
-        assert!(ILeb128::from_bytes(&[0]).expect_i16() == 0);
-        assert!(ILeb128::from_bytes(&[2]).expect_i16() == 2);
-        assert!(ILeb128::from_bytes(&[0x7e]).expect_i16() == -2);
-        assert!(ILeb128::from_bytes(&[0xff, 0]).expect_i16() == 127);
-        assert!(ILeb128::from_bytes(&[0x81, 0x7f]).expect_i16() == -127);
-        assert!(ILeb128::from_bytes(&[0x80, 1]).expect_i16() == 128);
-        assert!(ILeb128::from_bytes(&[0x80, 0x7f]).expect_i16() == -128);
-        assert!(ILeb128::from_bytes(&[0x81, 1]).expect_i16() == 129);
-        assert!(ILeb128::from_bytes(&[0xff, 0x7e]).expect_i16() == -129);
+        assert!(ILeb128Owned::from_bytes(&[0]).expect_i16() == 0);
+        assert!(ILeb128Owned::from_bytes(&[0]).expect_i16() == 0);
+        assert!(ILeb128Owned::from_bytes(&[2]).expect_i16() == 2);
+        assert!(ILeb128Owned::from_bytes(&[0x7e]).expect_i16() == -2);
+        assert!(ILeb128Owned::from_bytes(&[0xff, 0]).expect_i16() == 127);
+        assert!(ILeb128Owned::from_bytes(&[0x81, 0x7f]).expect_i16() == -127);
+        assert!(ILeb128Owned::from_bytes(&[0x80, 1]).expect_i16() == 128);
+        assert!(ILeb128Owned::from_bytes(&[0x80, 0x7f]).expect_i16() == -128);
+        assert!(ILeb128Owned::from_bytes(&[0x81, 1]).expect_i16() == 129);
+        assert!(ILeb128Owned::from_bytes(&[0xff, 0x7e]).expect_i16() == -129);
 
-        assert!(ILeb128::from_bytes(&[0]).expect_i32() == 0);
-        assert!(ILeb128::from_bytes(&[0]).expect_i32() == 0);
-        assert!(ILeb128::from_bytes(&[2]).expect_i32() == 2);
-        assert!(ILeb128::from_bytes(&[0x7e]).expect_i32() == -2);
-        assert!(ILeb128::from_bytes(&[0xff, 0]).expect_i32() == 127);
-        assert!(ILeb128::from_bytes(&[0x81, 0x7f]).expect_i32() == -127);
-        assert!(ILeb128::from_bytes(&[0x80, 1]).expect_i32() == 128);
-        assert!(ILeb128::from_bytes(&[0x80, 0x7f]).expect_i32() == -128);
-        assert!(ILeb128::from_bytes(&[0x81, 1]).expect_i32() == 129);
-        assert!(ILeb128::from_bytes(&[0xff, 0x7e]).expect_i32() == -129);
+        assert!(ILeb128Owned::from_bytes(&[0]).expect_i32() == 0);
+        assert!(ILeb128Owned::from_bytes(&[0]).expect_i32() == 0);
+        assert!(ILeb128Owned::from_bytes(&[2]).expect_i32() == 2);
+        assert!(ILeb128Owned::from_bytes(&[0x7e]).expect_i32() == -2);
+        assert!(ILeb128Owned::from_bytes(&[0xff, 0]).expect_i32() == 127);
+        assert!(ILeb128Owned::from_bytes(&[0x81, 0x7f]).expect_i32() == -127);
+        assert!(ILeb128Owned::from_bytes(&[0x80, 1]).expect_i32() == 128);
+        assert!(ILeb128Owned::from_bytes(&[0x80, 0x7f]).expect_i32() == -128);
+        assert!(ILeb128Owned::from_bytes(&[0x81, 1]).expect_i32() == 129);
+        assert!(ILeb128Owned::from_bytes(&[0xff, 0x7e]).expect_i32() == -129);
 
-        assert!(ILeb128::from_bytes(&[0]).expect_i64() == 0);
-        assert!(ILeb128::from_bytes(&[0]).expect_i64() == 0);
-        assert!(ILeb128::from_bytes(&[2]).expect_i64() == 2);
-        assert!(ILeb128::from_bytes(&[0x7e]).expect_i64() == -2);
-        assert!(ILeb128::from_bytes(&[0xff, 0]).expect_i64() == 127);
-        assert!(ILeb128::from_bytes(&[0x81, 0x7f]).expect_i64() == -127);
-        assert!(ILeb128::from_bytes(&[0x80, 1]).expect_i64() == 128);
-        assert!(ILeb128::from_bytes(&[0x80, 0x7f]).expect_i64() == -128);
-        assert!(ILeb128::from_bytes(&[0x81, 1]).expect_i64() == 129);
-        assert!(ILeb128::from_bytes(&[0xff, 0x7e]).expect_i64() == -129);
+        assert!(ILeb128Owned::from_bytes(&[0]).expect_i64() == 0);
+        assert!(ILeb128Owned::from_bytes(&[0]).expect_i64() == 0);
+        assert!(ILeb128Owned::from_bytes(&[2]).expect_i64() == 2);
+        assert!(ILeb128Owned::from_bytes(&[0x7e]).expect_i64() == -2);
+        assert!(ILeb128Owned::from_bytes(&[0xff, 0]).expect_i64() == 127);
+        assert!(ILeb128Owned::from_bytes(&[0x81, 0x7f]).expect_i64() == -127);
+        assert!(ILeb128Owned::from_bytes(&[0x80, 1]).expect_i64() == 128);
+        assert!(ILeb128Owned::from_bytes(&[0x80, 0x7f]).expect_i64() == -128);
+        assert!(ILeb128Owned::from_bytes(&[0x81, 1]).expect_i64() == 129);
+        assert!(ILeb128Owned::from_bytes(&[0xff, 0x7e]).expect_i64() == -129);
     }
 
     #[test]
     #[should_panic]
     fn test_decode_overflow_u8() {
-        ULeb128::from_bytes(&[128, 2]).expect_u8();
+        ULeb128Owned::from_bytes(&[128, 2]).expect_u8();
     }
     #[test]
     #[should_panic]
     fn test_decode_overflow_u16() {
-        ULeb128::from_bytes(&[128, 128, 4]).expect_u16();
+        ULeb128Owned::from_bytes(&[128, 128, 4]).expect_u16();
     }
     #[test]
     #[should_panic]
     fn test_decode_overflow_u32() {
-        ULeb128::from_bytes(&[128, 128, 128, 128, 16]).expect_u32();
+        ULeb128Owned::from_bytes(&[128, 128, 128, 128, 16]).expect_u32();
     }
     #[test]
     #[should_panic]
     fn test_decode_overflow_u64() {
-        ULeb128::from_bytes(&[128, 128, 128, 128, 128, 128, 128, 128, 128, 2]).expect_u64();
+        ULeb128Owned::from_bytes(&[128, 128, 128, 128, 128, 128, 128, 128, 128, 2]).expect_u64();
     }
     #[test]
     #[should_panic]
     fn test_decode_overflow_i8() {
-        ILeb128::from_bytes(&[128, 2]).expect_i8();
+        ILeb128Owned::from_bytes(&[128, 2]).expect_i8();
     }
     #[test]
     #[should_panic]
     fn test_decode_overflow_i16() {
-        ILeb128::from_bytes(&[128, 128, 4]).expect_i16();
+        ILeb128Owned::from_bytes(&[128, 128, 4]).expect_i16();
     }
     #[test]
     #[should_panic]
     fn test_decode_overflow_i32() {
-        ILeb128::from_bytes(&[128, 128, 128, 128, 16]).expect_i32();
+        ILeb128Owned::from_bytes(&[128, 128, 128, 128, 16]).expect_i32();
     }
     #[test]
     #[should_panic]
     fn test_decode_overflow_i64() {
-        ILeb128::from_bytes(&[128, 128, 128, 128, 128, 128, 128, 128, 128, 2]).expect_i64();
+        ILeb128Owned::from_bytes(&[128, 128, 128, 128, 128, 128, 128, 128, 128, 2]).expect_i64();
     }
 
     #[test]
     fn test_byte_count() {
-        assert!(ILeb128::from_bytes(&[2]).byte_count() == 1);
-        assert!(ILeb128::from_bytes(&[128, 128, 128, 2]).byte_count() == 4);
-        assert!(ILeb128::from_bytes(&[128, 128, 128, 128, 128, 128, 128, 128, 128, 2]).byte_count() == 10);
+        assert!(ILeb128Owned::from_bytes(&[2]).byte_count() == 1);
+        assert!(ILeb128Owned::from_bytes(&[128, 128, 128, 2]).byte_count() == 4);
+        assert!(ILeb128Owned::from_bytes(&[128, 128, 128, 128, 128, 128, 128, 128, 128, 2]).byte_count() == 10);
 
-        assert!(ULeb128::from_bytes(&[2]).byte_count() == 1);
-        assert!(ULeb128::from_bytes(&[128, 128, 128, 2]).byte_count() == 4);
-        assert!(ULeb128::from_bytes(&[128, 128, 128, 128, 128, 128, 128, 128, 128, 2]).byte_count() == 10);
+        assert!(ULeb128Owned::from_bytes(&[2]).byte_count() == 1);
+        assert!(ULeb128Owned::from_bytes(&[128, 128, 128, 2]).byte_count() == 4);
+        assert!(ULeb128Owned::from_bytes(&[128, 128, 128, 128, 128, 128, 128, 128, 128, 2]).byte_count() == 10);
     }
 
     // TODO test invalid from_bytes
